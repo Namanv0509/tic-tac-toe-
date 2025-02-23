@@ -2,28 +2,28 @@ import re
 import streamlit as st
 from phi.agent import Agent
 from phi.model.openai import OpenAIChat
-from phi.model.deepseek import DeepSeekChat
-from phi.model.google import Gemini
+
+# Initialize session state variables
+if 'wallet' not in st.session_state:
+    st.session_state.wallet = 100
+if 'game_in_progress' not in st.session_state:
+    st.session_state.game_in_progress = False
+if 'choice' not in st.session_state:
+    st.session_state.choice = None
 
 # Streamlit App Title
 st.title("🎮 Agent X vs Agent O: Tic-Tac-Toe Game")
 
-# Enhanced Welcome Message
 with st.chat_message("assistant"):
     st.markdown("""
-        **Welcome to the Tic-Tac-Toe AI Battle!** 🎮  
-        This project pits two advanced AI agents against each other in a classic game of Tic-Tac-Toe.  
-        Here's what you need to know:
+        **Welcome to the Tic-Tac-Toe AI Battle!**   
+        This project pits two advanced AI against AI 
     """)
     st.info("""
-        - **Player X**: Powered by Google's Gemini Flash 2.0.  
-        - **Player O**: Powered by DeepSeek v3.  
-        - **How to Play**: Enter your API keys in the sidebar, click **Start Game**, and watch the AI battle it out!  
-        - **Goal**: The first player to get three of their symbols in a row (horizontally, vertically, or diagonally) wins.  
-        - **Draw**: If the board fills up without a winner, the game ends in a draw.  
+        "Player X and Player O play against each other. The judge judges any illegal move and tells if it's a draw or a win",
+        "All the players are powered by OpenAI"
     """)
-    st.markdown("Ready to see who wins? Click the **Start Game** button below! 🚀")
-
+    st.markdown("Place your bets , and lets see who wins")
 
 # Function to display the board with better styling
 def display_board(board):
@@ -56,7 +56,6 @@ def display_board(board):
     board_html += '</div>'
     st.markdown(board_html, unsafe_allow_html=True)
 
-# Function to get the board state as a string
 def get_board_state(board):
     rows = []
     for i, row in enumerate(board):
@@ -64,7 +63,6 @@ def get_board_state(board):
         rows.append(f"Row {i}: {row_str}")
     return "\n".join(rows)
 
-# Function to check for a winner
 def check_winner(board):
     # Check rows
     for row in board:
@@ -84,27 +82,64 @@ def check_winner(board):
         return "Draw"
     return None
 
-# Sidebar for API keys
+# Sidebar for API keys and wallet display
 st.sidebar.header("API Keys")
 openai_api_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password")
-deepseek_api_key = st.sidebar.text_input("Enter your DeepSeek API Key", type="password")
-google_api_key = st.sidebar.text_input("Enter your Google API Key (for Gemini)", type="password")
-
 if openai_api_key:
     st.session_state.openai_api_key = openai_api_key
-if deepseek_api_key:
-    st.session_state.deepseek_api_key = deepseek_api_key
-if google_api_key:
-    st.session_state.google_api_key = google_api_key
 
-# Initialize agents if API keys are provided
+
+st.sidebar.info(f"Current Wallet Balance: {st.session_state.wallet:.2f}")
+
+# betting options 
+if not st.session_state.game_in_progress:
+    Amount = st.sidebar.number_input("Enter your bet amount", 
+                                   min_value=2.0, 
+                                   max_value=float(st.session_state.wallet),
+                                   step=1.0, 
+                                   value=None, 
+                                   format="%.2f")
+    
+    if Amount is not None:
+        st.sidebar.write("### Choose X or O:")
+        col1, col2 = st.sidebar.columns(2)
+        
+        if col1.button("X"):
+            st.session_state.choice = "X"
+            st.session_state.bet_amount = Amount
+        
+        if col2.button("O"):
+            st.session_state.choice = "O"
+            st.session_state.bet_amount = Amount
+        
+        if st.session_state.choice:
+            st.sidebar.success(f"Your choice: {st.session_state.choice}")
+            st.sidebar.info(f"Bet amount: ${Amount:.2f}")
+
+# Initialize agents if API key is provided
 if 'openai_api_key' in st.session_state:
     player_x = Agent(
         name="Player X",
-        model=Gemini(id="gemini-2.0-flash-exp", api_key=st.session_state.google_api_key),
+        model=OpenAIChat(id="gpt-4o", temperature=0.1, api_key=st.session_state.openai_api_key),
         instructions=[
             "You are a Tic-Tac-Toe player using the symbol 'X'.",
+
             "Your opponent is using the symbol 'O'. Block their potential winning moves.",
+            "Make your move in the format 'row, col' based on the current board state.",
+            "Strategize to win by placing your symbol in a way that blocks your opponent from forming a straight line.",
+            "Do not include any explanations or extra text. Only provide the move.",
+            "Don't play where the other player has already played",
+            "Row and column indices start from 0.",
+        ],
+        markdown=True,
+    )
+
+    player_o = Agent(
+        name="Player O",
+        model=OpenAIChat(id="gpt-4o", temperature=0.1, api_key=st.session_state.openai_api_key),
+        instructions=[
+            "You are a Tic-Tac-Toe player using the symbol 'O'.",
+            "Your opponent is using the symbol 'X'. Block their potential winning moves.",
             "Make your move in the format 'row, col' based on the current board state.",
             "Strategize to win by placing your symbol in a way that blocks your opponent from forming a straight line.",
             "Do not include any explanations or extra text. Only provide the move.",
@@ -113,24 +148,6 @@ if 'openai_api_key' in st.session_state:
         markdown=True,
     )
 
-    # Initialize Player O with DeepSeek or Google Gemini
-    if 'deepseek_api_key' in st.session_state:
-        player_o = Agent(
-            name="Player O",
-            model=DeepSeekChat(api_key=st.session_state.deepseek_api_key),
-            instructions=[
-                "You are a Tic-Tac-Toe player using the symbol 'O'.",
-                "Your opponent is using the symbol 'X'. Block their potential winning moves.",
-                "Make your move in the format 'row, col' based on the current board state.",
-                "Strategize to win by placing your symbol in a way that blocks your opponent from forming a straight line.",
-                "Do not include any explanations or extra text. Only provide the move.",
-                "Row and column indices start from 0.",
-            ],
-            markdown=True,
-        )
-    else:
-        st.warning("Please provide either a DeepSeek API key or a Google API key for Player O.")
-
     judge = Agent(
         name="Judge",
         model=OpenAIChat(id="gpt-4o", temperature=0.1, api_key=st.session_state.openai_api_key),
@@ -138,10 +155,6 @@ if 'openai_api_key' in st.session_state:
             "You are the judge of a Tic-Tac-Toe game.",
             "The board is presented as rows with positions separated by '|'.",
             "Rows are labeled from 0 to 2, and columns from 0 to 2.",
-            "Example board state:",
-            "Row 0: (0,0) X | (0,1)   | (0,2) O",
-            "Row 1: (1,0) O | (1,1) X | (1,2) X",
-            "Row 2: (2,0) X | (2,1) O | (2,2) O",
             "Determine the winner based on this board state.",
             "The winner is the player with three of their symbols in a straight line (row, column, or diagonal).",
             "If the board is full and there is no winner, declare a draw.",
@@ -150,7 +163,6 @@ if 'openai_api_key' in st.session_state:
         markdown=True,
     )
 
-    # Function to extract the move from the agent's response
     def extract_move(response):
         content = response.content.strip()
         match = re.search(r'\d\s*,\s*\d', content)
@@ -164,8 +176,8 @@ if 'openai_api_key' in st.session_state:
             return f"{row},{col}"
         return None
 
-    # Game loop
     def play_game():
+        st.session_state.game_in_progress = True
         
         if 'board' not in st.session_state:
             st.session_state.board = [[None, None, None],
@@ -179,22 +191,18 @@ if 'openai_api_key' in st.session_state:
             st.session_state.move_count = 0
 
         max_moves = 9
-        winner = None  
+        winner = None
 
-       
         while st.session_state.move_count < max_moves:
-           
             st.write("**Current Board:**")
             display_board(st.session_state.board)
 
-       
             board_state = get_board_state(st.session_state.board)
             move_prompt = (
                 f"Current board state:\n{board_state}\n"
                 f"{st.session_state.current_player.name}'s turn. Provide your move in 'row, col' format."
             )
 
-            
             st.write(f"**{st.session_state.current_player.name}'s turn:**")
             move_response = st.session_state.current_player.run(move_prompt)
             st.write(f"Agent Response: {move_response.content}")
@@ -204,7 +212,6 @@ if 'openai_api_key' in st.session_state:
                 st.error("Invalid move! Please use the format 'row, col'.")
                 continue
 
-         
             try:
                 row, col = map(int, move.split(','))
                 if st.session_state.board[row][col] is not None:
@@ -215,7 +222,6 @@ if 'openai_api_key' in st.session_state:
                 st.error("Invalid move! Please provide row and column numbers like '1, 2'.")
                 continue
 
-            
             winner = check_winner(st.session_state.board)
             if winner:
                 break
@@ -229,22 +235,24 @@ if 'openai_api_key' in st.session_state:
 
             st.session_state.move_count += 1
 
-       
         st.write("**Final Board:**")
         display_board(st.session_state.board)
 
-      
+        # Update wallet based on game outcome
         if winner:
-            st.success(f"**Winner:** {winner}")
+            if winner == st.session_state.choice:
+                st.session_state.wallet += st.session_state.bet_amount
+                st.success(f"Congratulations! {winner} wins! You won ${st.session_state.bet_amount:.2f}")
+            else:
+                st.session_state.wallet -= st.session_state.bet_amount
+                st.error(f"Game Over! {winner} wins! You lost ${st.session_state.bet_amount:.2f}")
         else:
             st.success("**Result:** It's a draw!")
 
        
+        st.info(f"Your new wallet balance: ${st.session_state.wallet:.2f}")
         st.write("**The judge is evaluating the game result...**")
         final_board_state = get_board_state(st.session_state.board)
-        st.write("**Final board state sent to judge:**")
-        st.code(final_board_state)
-
         judge_prompt = (
             f"Final board state:\n{final_board_state}\n"
             "Determine the winner and provide the result."
@@ -253,13 +261,21 @@ if 'openai_api_key' in st.session_state:
         st.write("**Judge's Response:**")
         st.code(judge_response.content)
 
-    if st.button("Start Game"):
-        st.session_state.board = [[None, None, None],
-                                [None, None, None],
-                                [None, None, None]]
-        st.session_state.current_player = player_x
-        st.session_state.symbol = "X"
-        st.session_state.move_count = 0
-        play_game()
-    else:   
-        st.warning("Please enter your OpenAI API key and other required keys to start the game.")
+        # Reset game state
+        st.session_state.game_in_progress = False
+        st.session_state.choice = None
+        if 'bet_amount' in st.session_state:
+            del st.session_state.bet_amount
+
+  
+    if not st.session_state.game_in_progress and st.session_state.choice and 'bet_amount' in st.session_state:
+        if st.button("Start Game"):
+            st.session_state.board = [[None, None, None],
+                                    [None, None, None],
+                                    [None, None, None]]
+            st.session_state.current_player = player_x
+            st.session_state.symbol = "X"
+            st.session_state.move_count = 0
+            play_game()
+else:
+    st.warning("Please enter your OpenAI API key to start the game.")
